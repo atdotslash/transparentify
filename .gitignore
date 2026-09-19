@@ -7,9 +7,9 @@ __pycache__/
 *.so
 
 # Distribution / packaging
-build/
-!build/*.bat
-!build/*.sh
+build/*
+!build/build_windows.bat
+!build/build_linux.sh
 dist/
 downloads/
 eggs/
