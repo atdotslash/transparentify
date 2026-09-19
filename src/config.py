@@ -59,6 +59,9 @@ DEFAULT_UNDO_LIMIT = 30
 # Transparency Overlay highlight color (R, G, B, A)
 TRANSPARENCY_OVERLAY_COLOR = (255, 50, 50, 120)
 
+# Supported image extensions
+SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".tif"}
+
 # Keyboard Shortcuts Guide
 SHORTCUTS = {
     "eyedropper": "E",
