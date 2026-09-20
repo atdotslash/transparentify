@@ -18,6 +18,8 @@ try:
 except ImportError:
     _BGONE_AVAILABLE = False
 
+BACKEND: str = "bgone" if _BGONE_AVAILABLE else "NumPy (nativo)"
+
 # Maximum normalized threshold factor (at tolerance=100, maps to 0.55 normalized distance)
 MAX_NORMALIZED_THRESHOLD = 0.55
 LARGE_IMAGE_ROW_CHUNK = 2048

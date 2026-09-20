@@ -22,6 +22,9 @@ dev = [
     "pytest>=7.0.0",
     "pyinstaller>=6.0.0",
 ]
+bgone = [
+    "bgone",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
