@@ -25,7 +25,7 @@ class ToolBar(ctk.CTkFrame):
         icon_names = [
             "eyedropper", "brush", "eraser", "pan",
             "zoom_in", "zoom_out", "fit", "actual_size",
-            "overlay", "settings", "undo", "redo"
+            "overlay", "settings", "info", "undo", "redo"
         ]
         for name in icon_names:
             p = ICONS_DIR / f"{name}.png"
@@ -188,7 +188,19 @@ class ToolBar(ctk.CTkFrame):
 
         self._create_separator()
 
-        # 5. Right controls (Settings, Overlay, Zoom) packed to right
+        # 5. Right controls (About, Settings, Overlay, Interpolation, Zoom)
+        self.btn_about = ctk.CTkButton(
+            self,
+            text="",
+            image=self.icons.get("info"),
+            width=34,
+            height=32,
+            fg_color="#2A2D3A",
+            hover_color="#3B4052",
+            command=lambda: self.app.open_about_dialog(),
+        )
+        self.btn_about.pack(side="right", padx=(4, 10), pady=6)
+
         self.btn_settings = ctk.CTkButton(
             self,
             text="",
@@ -199,7 +211,7 @@ class ToolBar(ctk.CTkFrame):
             hover_color="#3B4052",
             command=lambda: self.app.open_settings_dialog(),
         )
-        self.btn_settings.pack(side="right", padx=(4, 10), pady=6)
+        self.btn_settings.pack(side="right", padx=4, pady=6)
 
         self.btn_overlay = ctk.CTkButton(
             self,
@@ -212,6 +224,17 @@ class ToolBar(ctk.CTkFrame):
             command=lambda: self.app.toggle_transparency_highlight(),
         )
         self.btn_overlay.pack(side="right", padx=4, pady=6)
+
+        self.btn_interp = ctk.CTkButton(
+            self,
+            text="Nítido",
+            width=64,
+            height=32,
+            fg_color="#2A2D3A",
+            hover_color="#3B4052",
+            command=lambda: self.app.toggle_canvas_interpolation(),
+        )
+        self.btn_interp.pack(side="right", padx=4, pady=6)
 
         # Zoom Controls
         self.btn_actual = ctk.CTkButton(
@@ -298,3 +321,9 @@ class ToolBar(ctk.CTkFrame):
             self.btn_overlay.configure(fg_color="#DC2626", hover_color="#B91C1C")
         else:
             self.btn_overlay.configure(fg_color="#2A2D3A", hover_color="#3B4052")
+
+    def update_interpolation_button(self, is_smooth: bool):
+        if is_smooth:
+            self.btn_interp.configure(text="Suave", fg_color="#0284C7", hover_color="#0369A1")
+        else:
+            self.btn_interp.configure(text="Nítido", fg_color="#2A2D3A", hover_color="#3B4052")

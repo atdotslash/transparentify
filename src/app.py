@@ -18,9 +18,11 @@ from src.config import (
     DEFAULT_SOFT_EDGE,
     DEFAULT_UNDO_LIMIT,
     SUPPORTED_EXTENSIONS,
+    load_user_config,
+    save_user_config,
 )
 from src.canvas_view import CanvasView
-from src.dialogs import ColorConfirmDialog, SettingsDialog
+from src.dialogs import ColorConfirmDialog, SettingsDialog, AboutDialog
 from src.image_document import ImageDocument
 from src.tools.brush import BrushTool
 from src.tools.eyedropper import EyedropperTool
@@ -41,19 +43,9 @@ class TransparentifyApp(ctk.CTk):
         self.geometry("1240x820")
         self.minsize(920, 620)
 
-        # Settings
-        self.settings: Dict[str, Any] = {
-            "show_grid": True,
-            "smooth_interpolation": False,
-            "ask_eyedropper": True,
-            "respect_initial_alpha": True,
-            "checker_size": 16,
-            "max_undo_steps": DEFAULT_UNDO_LIMIT,
-            "theme": DEFAULT_THEME,
-            "last_tolerance": DEFAULT_TOLERANCE,
-            "last_soft_edge": DEFAULT_SOFT_EDGE,
-            "last_scope": "all",
-        }
+        # Load persisted settings from %APPDATA% / ~/.config
+        self.settings: Dict[str, Any] = load_user_config()
+        ctk.set_appearance_mode(self.settings.get("theme", DEFAULT_THEME))
 
         self._set_app_icon()
 
@@ -109,6 +101,20 @@ class TransparentifyApp(ctk.CTk):
         )
         self.canvas_view.pack(side="left", fill="both", expand=True)
 
+        # Apply loaded settings to canvas and toolbar
+        self.canvas_view.checker_light = self.settings.get("checker_light", "#FFFFFF")
+        self.canvas_view.checker_dark = self.settings.get("checker_dark", "#CCCCCC")
+        self.canvas_view.checker_size = self.settings.get("checker_size", 16)
+        self.canvas_view.show_grid = self.settings.get("show_grid", True)
+        self.canvas_view.smooth_interpolation = self.settings.get("smooth_interpolation", False)
+        self.canvas_view.magnifier.update_settings(
+            size_px=self.settings.get("magnifier_size", 110),
+            zoom_factor=self.settings.get("magnifier_zoom", 10.0),
+            show_grid=self.settings.get("magnifier_show_grid", True),
+            show_badge=self.settings.get("magnifier_show_badge", True),
+        )
+        self.toolbar.update_interpolation_button(self.canvas_view.smooth_interpolation)
+
     def _init_tools(self):
         self.eyedropper_tool = EyedropperTool(self.canvas_view, app=self)
         self.brush_tool = BrushTool(self.canvas_view, app=self, mode="brush")
@@ -160,6 +166,9 @@ class TransparentifyApp(ctk.CTk):
         # Space temporary pan
         self.bind("<KeyPress-space>", lambda e: self.canvas_view.set_space_pressed(True))
         self.bind("<KeyRelease-space>", lambda e: self.canvas_view.set_space_pressed(False))
+
+        # About
+        self.bind("<F1>", lambda e: self.open_about_dialog())
 
         # Cancel
         self.bind("<Escape>", lambda e: self._on_escape())
@@ -337,13 +346,13 @@ class TransparentifyApp(ctk.CTk):
         if not self.canvas_view.document:
             return
 
-        if not self.settings.get("ask_eyedropper", True):
-            # Apply immediately using stored session settings
+        # Check if user marked "no volver a preguntar"
+        if self.settings.get("remember_choice", False):
             self.apply_color_transparency_operation(
                 target_rgb=target_rgb,
-                tolerance=self.settings.get("last_tolerance", DEFAULT_TOLERANCE),
-                soft_edge=self.settings.get("last_soft_edge", DEFAULT_SOFT_EDGE),
-                scope=self.settings.get("last_scope", "all"),
+                tolerance=self.settings.get("default_tolerance", DEFAULT_TOLERANCE),
+                soft_edge=self.settings.get("default_soft_edge", DEFAULT_SOFT_EDGE),
+                scope="all",
                 pixel_coord=pixel_coord,
             )
             return
@@ -351,11 +360,11 @@ class TransparentifyApp(ctk.CTk):
         # Open confirmation modal
         def _confirmed_callback(options: Dict[str, Any]):
             if options.get("remember", False):
-                self.settings["ask_eyedropper"] = False
+                self.settings["remember_choice"] = True
+                save_user_config(self.settings)
 
-            self.settings["last_tolerance"] = options["tolerance"]
-            self.settings["last_soft_edge"] = options["soft_edge"]
-            self.settings["last_scope"] = options["scope"]
+            self.settings["default_tolerance"] = options["tolerance"]
+            self.settings["default_soft_edge"] = options["soft_edge"]
 
             self.apply_color_transparency_operation(
                 target_rgb=options["target_rgb"],
@@ -369,8 +378,8 @@ class TransparentifyApp(ctk.CTk):
             self,
             target_rgb=target_rgb,
             on_confirm=_confirmed_callback,
-            default_tolerance=self.settings.get("last_tolerance", DEFAULT_TOLERANCE),
-            default_soft_edge=self.settings.get("last_soft_edge", DEFAULT_SOFT_EDGE),
+            default_tolerance=self.settings.get("default_tolerance", DEFAULT_TOLERANCE),
+            default_soft_edge=self.settings.get("default_soft_edge", DEFAULT_SOFT_EDGE),
         )
 
     def apply_color_transparency_operation(
@@ -439,26 +448,55 @@ class TransparentifyApp(ctk.CTk):
         self.statusbar.update_history_counts(u_cnt, r_cnt)
 
     # -------------------------------------------------------------------------
-    # Pixel Hover and Settings Dialog
+    # Pixel Hover, Interpolation, Settings and About Dialogs
     # -------------------------------------------------------------------------
     def _on_pixel_hover(self, info: Optional[Dict[str, Any]]):
         self.statusbar.update_pixel_info(info)
 
+    def toggle_canvas_interpolation(self):
+        """Toggle NEAREST vs smooth interpolation on the canvas."""
+        self.canvas_view.smooth_interpolation = not self.canvas_view.smooth_interpolation
+        self.settings["smooth_interpolation"] = self.canvas_view.smooth_interpolation
+        save_user_config(self.settings)
+        self.toolbar.update_interpolation_button(self.canvas_view.smooth_interpolation)
+        self.canvas_view.redraw()
+
+    def open_about_dialog(self):
+        """Open the About modal dialog."""
+        AboutDialog(self)
+
     def open_settings_dialog(self):
+        """Open the Settings modal dialog with real-time application and persistence."""
         def _save_callback(new_settings: Dict[str, Any]):
             self.settings.update(new_settings)
+            save_user_config(self.settings)
+
             # Apply to canvas
-            self.canvas_view.show_grid = self.settings["show_grid"]
-            self.canvas_view.smooth_interpolation = self.settings["smooth_interpolation"]
-            self.canvas_view.checker_size = self.settings["checker_size"]
+            self.canvas_view.checker_light = self.settings.get("checker_light", "#FFFFFF")
+            self.canvas_view.checker_dark = self.settings.get("checker_dark", "#CCCCCC")
+            self.canvas_view.checker_size = self.settings.get("checker_size", 16)
+            self.canvas_view.show_grid = self.settings.get("show_grid", True)
+            self.canvas_view.smooth_interpolation = self.settings.get("smooth_interpolation", False)
+            self.canvas_view.magnifier.update_settings(
+                size_px=self.settings.get("magnifier_size", 110),
+                zoom_factor=self.settings.get("magnifier_zoom", 10.0),
+                show_grid=self.settings.get("magnifier_show_grid", True),
+                show_badge=self.settings.get("magnifier_show_badge", True),
+            )
+            self.toolbar.update_interpolation_button(self.canvas_view.smooth_interpolation)
 
             # Apply theme
-            ctk.set_appearance_mode(self.settings["theme"])
+            ctk.set_appearance_mode(self.settings.get("theme", "dark"))
 
             # Apply to document
             if self.canvas_view.document:
-                self.canvas_view.document.max_undo_steps = self.settings["max_undo_steps"]
+                self.canvas_view.document.max_undo_steps = self.settings.get("max_undo_steps", 30)
 
             self.canvas_view.redraw()
 
-        SettingsDialog(self, current_settings=self.settings, on_save=_save_callback)
+        SettingsDialog(
+            self,
+            current_settings=self.settings,
+            on_save=_save_callback,
+            on_open_about=self.open_about_dialog,
+        )
