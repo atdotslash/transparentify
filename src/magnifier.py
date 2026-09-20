@@ -18,10 +18,10 @@ class MagnifierOverlay:
     Renders an interactive floating magnifier over the canvas.
 
     Shows:
-    - 11x11 crop around the cursor scaled x10 with NEAREST interpolation.
-    - 1px grid between pixels.
+    - Crop around the cursor scaled with NEAREST interpolation.
+    - Optional fine 1px grid between pixels.
     - Center reticle / box marking the active target pixel.
-    - Hex and RGB color indicator badge.
+    - Optional Hex and RGB color indicator badge.
     - Automatic screen-edge avoidance.
     """
 
@@ -30,12 +30,47 @@ class MagnifierOverlay:
         size_px: int = DEFAULT_MAGNIFIER_SIZE_PX,
         grid_cells: int = DEFAULT_MAGNIFIER_GRID_CELLS,
         zoom_factor: float = DEFAULT_MAGNIFIER_ZOOM,
+        show_grid: bool = True,
+        show_badge: bool = True,
     ):
-        self.size_px = size_px
-        self.grid_cells = grid_cells if grid_cells % 2 != 0 else grid_cells + 1  # Ensure odd for center pixel
-        self.zoom_factor = zoom_factor
-        self.cell_size = self.size_px / self.grid_cells
+        self.size_px = int(size_px)
+        self.zoom_factor = float(zoom_factor)
+        self.show_grid = show_grid
+        self.show_badge = show_badge
+        self._recompute_cells(grid_cells)
         self._cached_photo: Optional[ImageTk.PhotoImage] = None
+
+    def _recompute_cells(self, preferred_cells: Optional[int] = None):
+        if preferred_cells is not None:
+            cells = preferred_cells
+        else:
+            cells = max(3, int(round(self.size_px / max(1.0, self.zoom_factor))))
+
+        # Ensure odd number of cells so there is an unambiguous center pixel
+        if cells % 2 == 0:
+            cells += 1
+
+        self.grid_cells = cells
+        self.cell_size = self.size_px / self.grid_cells
+
+    def update_settings(
+        self,
+        size_px: Optional[int] = None,
+        zoom_factor: Optional[float] = None,
+        show_grid: Optional[bool] = None,
+        show_badge: Optional[bool] = None,
+    ):
+        """Update magnifier settings dynamically."""
+        if size_px is not None:
+            self.size_px = max(60, min(300, int(size_px)))
+        if zoom_factor is not None:
+            self.zoom_factor = max(4.0, min(30.0, float(zoom_factor)))
+        if show_grid is not None:
+            self.show_grid = bool(show_grid)
+        if show_badge is not None:
+            self.show_badge = bool(show_badge)
+
+        self._recompute_cells()
 
     def create_magnifier_image(
         self,
@@ -96,11 +131,12 @@ class MagnifierOverlay:
         draw = ImageDraw.Draw(magnified)
 
         # 1px grid between magnified cells
-        grid_color = (80, 85, 95, 180)
-        for i in range(1, self.grid_cells):
-            pos = int(round(i * self.cell_size))
-            draw.line([(pos, 0), (pos, target_size)], fill=grid_color, width=1)
-            draw.line([(0, pos), (target_size, pos)], fill=grid_color, width=1)
+        if self.show_grid:
+            grid_color = (80, 85, 95, 180)
+            for i in range(1, self.grid_cells):
+                pos = int(round(i * self.cell_size))
+                draw.line([(pos, 0), (pos, target_size)], fill=grid_color, width=1)
+                draw.line([(0, pos), (target_size, pos)], fill=grid_color, width=1)
 
         # Highlight center target pixel with a double reticle box
         center_x0 = int(round(half_cells * self.cell_size))
@@ -116,19 +152,20 @@ class MagnifierOverlay:
         draw.rectangle([0, 0, target_size - 1, target_size - 1], outline=(0, 210, 255), width=2)
 
         # Info badge at the bottom of the magnifier
-        badge_h = 28
-        badge_y0 = target_size - badge_h
-        draw.rectangle([0, badge_y0, target_size, target_size], fill=(20, 22, 28))
-        draw.line([(0, badge_y0), (target_size, badge_y0)], fill=(60, 65, 80), width=1)
+        if self.show_badge:
+            badge_h = 28
+            badge_y0 = target_size - badge_h
+            draw.rectangle([0, badge_y0, target_size, target_size], fill=(20, 22, 28))
+            draw.line([(0, badge_y0), (target_size, badge_y0)], fill=(60, 65, 80), width=1)
 
-        # Swatch dot
-        swatch_x = 8
-        swatch_y = badge_y0 + 8
-        draw.ellipse([swatch_x, swatch_y, swatch_x + 12, swatch_y + 12], fill=(r, g, b), outline=(255, 255, 255), width=1)
+            # Swatch dot
+            swatch_x = 8
+            swatch_y = badge_y0 + 8
+            draw.ellipse([swatch_x, swatch_y, swatch_x + 12, swatch_y + 12], fill=(r, g, b), outline=(255, 255, 255), width=1)
 
-        # Color Text: HEX and RGB
-        draw.text((swatch_x + 18, badge_y0 + 3), hex_str, fill=(255, 255, 255))
-        draw.text((swatch_x + 18, badge_y0 + 15), f"{r},{g},{b}", fill=(170, 180, 200))
+            # Color Text: HEX and RGB
+            draw.text((swatch_x + 18, badge_y0 + 3), hex_str, fill=(255, 255, 255))
+            draw.text((swatch_x + 18, badge_y0 + 15), f"{r},{g},{b}", fill=(170, 180, 200))
 
         self._cached_photo = ImageTk.PhotoImage(magnified)
         return self._cached_photo, hex_str, rgb_str
